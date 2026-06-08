@@ -6,49 +6,156 @@ import torch
 
 
 SHAKESPEARE_URL = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+HF_DATASETS = {
+    "tinystories": {
+        "path": "roneneldan/TinyStories",
+        "splits": {"train": "train", "val": "validation"},
+        "text_column": "text",
+    },
+    "wikitext2": {
+        "path": "Salesforce/wikitext",
+        "name": "wikitext-2-raw-v1",
+        "splits": {"train": "train", "val": "validation", "test": "test"},
+        "text_column": "text",
+    },
+}
 
 
-def read_or_download_dataset(dataset: str, raw_dir: Path) -> str:
+def limit_text(text: str, max_chars: int | None) -> str:
+    if max_chars is None or len(text) <= max_chars:
+        return text
+    return text[:max_chars]
+
+
+def split_text(text: str, train_ratio: float, val_ratio: float) -> dict[str, str]:
+    train_end = int(train_ratio * len(text))
+    val_end = int((train_ratio + val_ratio) * len(text))
+    return {
+        "train": text[:train_end],
+        "val": text[train_end:val_end],
+        "test": text[val_end:],
+    }
+
+
+def read_local_text(path: Path, max_chars: int | None) -> dict[str, str]:
+    return {"all": limit_text(path.read_text(encoding="utf-8"), max_chars)}
+
+
+def read_shakespeare(raw_dir: Path, max_chars: int | None) -> dict[str, str]:
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    path = raw_dir / "shakespeare.txt"
+
+    if path.exists():
+        return read_local_text(path, max_chars)
+
+    response = requests.get(SHAKESPEARE_URL, timeout=30)
+    response.raise_for_status()
+    path.write_text(response.text, encoding="utf-8")
+    return {"all": limit_text(response.text, max_chars)}
+
+
+def collect_hf_split(
+    dataset_path: str,
+    dataset_name: str | None,
+    split: str,
+    text_column: str,
+    max_chars: int | None,
+) -> str:
+    from datasets import load_dataset
+
+    dataset = load_dataset(dataset_path, dataset_name, split=split, streaming=max_chars is not None)
+    parts = []
+    char_count = 0
+    for row in dataset:
+        text = str(row[text_column]).strip()
+        if not text:
+            continue
+        text = text + "\n\n"
+        if max_chars is not None and char_count + len(text) > max_chars:
+            remaining = max_chars - char_count
+            if remaining > 0:
+                parts.append(text[:remaining])
+            break
+        parts.append(text)
+        char_count += len(text)
+    return "".join(parts)
+
+
+def read_huggingface_dataset(dataset: str, max_chars: int | None) -> dict[str, str]:
+    spec = HF_DATASETS[dataset]
+    eval_max_chars = max(1, max_chars // 20) if max_chars is not None else None
+    split_limits = {
+        "train": max_chars,
+        "val": eval_max_chars,
+        "test": eval_max_chars,
+    }
+
+    texts = {}
+    for output_split, hf_split in spec["splits"].items():
+        texts[output_split] = collect_hf_split(
+            dataset_path=spec["path"],
+            dataset_name=spec.get("name"),
+            split=hf_split,
+            text_column=spec["text_column"],
+            max_chars=split_limits[output_split],
+        )
+    return texts
+
+
+def read_or_download_dataset(dataset: str, raw_dir: Path, max_chars: int | None) -> dict[str, str]:
     raw_dir.mkdir(parents=True, exist_ok=True)
     path = raw_dir / f"{dataset}.txt"
 
     if path.exists():
-        return path.read_text(encoding="utf-8")
-
+        return read_local_text(path, max_chars)
     if dataset == "shakespeare":
-        response = requests.get(SHAKESPEARE_URL, timeout=30)
-        response.raise_for_status()
-        path.write_text(response.text, encoding="utf-8")
-        return response.text
+        return read_shakespeare(raw_dir, max_chars)
+    if dataset in HF_DATASETS:
+        return read_huggingface_dataset(dataset, max_chars)
 
-    raise FileNotFoundError(
-        f"Expected local dataset at {path}. Only shakespeare is downloaded automatically."
-    )
+    raise ValueError(f"Unsupported dataset: {dataset}")
 
 
-def prepare_character_data(text: str, dataset: str, output_path: Path) -> None:
-    chars = sorted(set(text))
+def prepare_character_data(
+    texts: dict[str, str],
+    dataset: str,
+    output_path: Path,
+    train_ratio: float,
+    val_ratio: float,
+) -> None:
+    if "all" in texts:
+        texts = split_text(texts["all"], train_ratio=train_ratio, val_ratio=val_ratio)
+
+    combined_text = "".join(texts.values())
+    chars = sorted(set(combined_text))
     stoi = {char: index for index, char in enumerate(chars)}
     itos = {index: char for char, index in stoi.items()}
-    encoded = torch.tensor([stoi[char] for char in text], dtype=torch.long)
+    encoded = {
+        split: torch.tensor([stoi[char] for char in text], dtype=torch.long)
+        for split, text in texts.items()
+    }
 
-    train_end = int(0.9 * len(encoded))
-    val_end = int(0.95 * len(encoded))
     payload = {
         "dataset": dataset,
         "level": "char",
         "vocab_size": len(chars),
         "stoi": stoi,
         "itos": itos,
-        "train": encoded[:train_end],
-        "val": encoded[train_end:val_end],
-        "test": encoded[val_end:],
+        "train": encoded["train"],
+        "val": encoded["val"],
+        "test": encoded.get("test", torch.empty(0, dtype=torch.long)),
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(payload, output_path)
     print(f"Saved {dataset} character data to {output_path}")
-    print(f"Characters: {len(encoded):,}; vocabulary: {len(chars)}")
+    print(
+        "Characters: "
+        f"train={len(payload['train']):,}, "
+        f"val={len(payload['val']):,}, "
+        f"test={len(payload['test']):,}; "
+        f"vocabulary={len(chars)}"
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,14 +167,25 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--raw-dir", default="data/raw")
     parser.add_argument("--output-dir", default="data/processed")
+    parser.add_argument(
+        "--max-chars",
+        type=int,
+        default=None,
+        help="Optional character limit. For Hugging Face datasets this limits the train split; val/test receive smaller limits.",
+    )
+    parser.add_argument("--train-ratio", type=float, default=0.9)
+    parser.add_argument("--val-ratio", type=float, default=0.05)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    text = read_or_download_dataset(args.dataset, Path(args.raw_dir))
+    if args.train_ratio <= 0 or args.val_ratio <= 0 or args.train_ratio + args.val_ratio >= 1:
+        raise ValueError("Expected train_ratio > 0, val_ratio > 0, and train_ratio + val_ratio < 1.")
+
+    texts = read_or_download_dataset(args.dataset, Path(args.raw_dir), args.max_chars)
     output_path = Path(args.output_dir) / f"{args.dataset}_char.pt"
-    prepare_character_data(text, args.dataset, output_path)
+    prepare_character_data(texts, args.dataset, output_path, args.train_ratio, args.val_ratio)
 
 
 if __name__ == "__main__":

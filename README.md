@@ -28,7 +28,25 @@ Supported datasets:
 - `tinystories`
 - `wikitext2`
 
-TinyStories and WikiText-2 are prepared from local text files by default. Put them in `data/raw/tinystories.txt` or `data/raw/wikitext2.txt`.
+Data sources:
+
+- `shakespeare` downloads Tiny Shakespeare from Andrej Karpathy's char-rnn repository unless `data/raw/shakespeare.txt` already exists.
+- `tinystories` downloads `roneneldan/TinyStories` through Hugging Face `datasets` unless `data/raw/tinystories.txt` exists.
+- `wikitext2` downloads `Salesforce/wikitext`, config `wikitext-2-raw-v1`, through Hugging Face `datasets` unless `data/raw/wikitext2.txt` exists.
+
+Local text files always take precedence. Put custom files at `data/raw/<dataset>.txt` to use your own copy.
+
+For laptop-friendly TinyStories experiments, start with a subset:
+
+```bash
+uv run python -m slm.prepare_data --dataset tinystories --max-chars 5000000
+```
+
+For local single-file datasets, `--train-ratio` and `--val-ratio` control contiguous train/validation/test splitting:
+
+```bash
+uv run python -m slm.prepare_data --dataset shakespeare --train-ratio 0.9 --val-ratio 0.05
+```
 
 ## Train
 
