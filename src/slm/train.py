@@ -12,18 +12,57 @@ from slm.models import build_model
 from slm.utils import count_parameters, load_yaml, perplexity, save_json, select_device, set_seed
 
 
+def model_signature(model_config: dict) -> str:
+    model_type = model_config["type"].lower()
+    parts = [model_type]
+    for key in ("embedding_dim", "hidden_dim", "num_layers", "num_heads"):
+        if key in model_config:
+            parts.append(f"{key}-{model_config[key]}")
+    return "_".join(parts)
+
+
+def build_experiment_config(
+    config: dict,
+    dataset: str,
+    data_dir: str,
+    output_dir: str | None,
+    wandb_project: str,
+    wandb_mode: str,
+) -> dict:
+    model_config = dict(config["model"])
+    run_name = f"{dataset}_{model_signature(model_config)}"
+    resolved_output_dir = output_dir or str(Path("runs") / dataset / model_signature(model_config))
+    return {
+        "name": run_name,
+        "dataset": dataset,
+        "data_path": str(Path(data_dir) / f"{dataset}_char.pt"),
+        "output_dir": resolved_output_dir,
+        "model": model_config,
+        "training": dict(config["training"]),
+        "wandb": {
+            "project": wandb_project,
+            "name": run_name,
+            "mode": wandb_mode,
+            "group": dataset,
+            "tags": [dataset, model_config["type"].lower()],
+        },
+    }
+
+
 def maybe_init_wandb(config: dict, enabled: bool):
-    wandb_config = config.get("wandb", {})
-    if not enabled or not wandb_config.get("enabled", False):
+    if not enabled:
         return None
 
     import wandb
 
+    wandb_config = config["wandb"]
     return wandb.init(
-        project=wandb_config.get("project", "slm-architecture-comparison"),
-        name=wandb_config.get("name", config.get("name")),
+        project=wandb_config["project"],
+        name=wandb_config["name"],
+        group=wandb_config["group"],
+        tags=wandb_config["tags"],
         config=config,
-        mode=wandb_config.get("mode", "online"),
+        mode=wandb_config["mode"],
     )
 
 
@@ -172,13 +211,35 @@ def train(config: dict, disable_wandb: bool = False) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a character-level language model.")
     parser.add_argument("--config", required=True)
+    parser.add_argument(
+        "--dataset",
+        required=True,
+        choices=["shakespeare", "tinystories", "wikitext2"],
+        help="Prepared dataset name. Expects data/processed/<dataset>_char.pt by default.",
+    )
+    parser.add_argument("--data-dir", default="data/processed")
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Optional output directory. Defaults to runs/<dataset>/<model-signature>.",
+    )
+    parser.add_argument("--wandb-project", required=True)
+    parser.add_argument("--wandb-mode", default="online", choices=["online", "offline", "disabled"])
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging for this run.")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    train(load_yaml(args.config), disable_wandb=args.no_wandb)
+    config = build_experiment_config(
+        load_yaml(args.config),
+        dataset=args.dataset,
+        data_dir=args.data_dir,
+        output_dir=args.output_dir,
+        wandb_project=args.wandb_project,
+        wandb_mode=args.wandb_mode,
+    )
+    train(config, disable_wandb=args.no_wandb or args.wandb_mode == "disabled")
 
 
 if __name__ == "__main__":

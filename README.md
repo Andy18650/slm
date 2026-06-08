@@ -51,22 +51,32 @@ uv run python -m slm.prepare_data --dataset shakespeare --train-ratio 0.9 --val-
 ## Train
 
 ```bash
-uv run python -m slm.train --config configs/rnn_shakespeare.yaml
-uv run python -m slm.train --config configs/lstm_shakespeare.yaml
-uv run python -m slm.train --config configs/gru_shakespeare.yaml
-uv run python -m slm.train --config configs/transformer_shakespeare.yaml
+uv run python -m slm.train --config configs/rnn.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
+uv run python -m slm.train --config configs/lstm.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
+uv run python -m slm.train --config configs/gru.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
+uv run python -m slm.train --config configs/transformer.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 ```
+
+The config file contains only model and training hyperparameters. Dataset choice, W&B grouping, and output locations are runtime parameters.
+
+By default, training reads `data/processed/<dataset>_char.pt` and writes to `runs/<dataset>/<model-signature>/`.
 
 Disable W&B for a run:
 
 ```bash
-uv run python -m slm.train --config configs/lstm_shakespeare.yaml --no-wandb
+uv run python -m slm.train --config configs/lstm.yaml --dataset shakespeare --wandb-project slm-architecture-comparison --no-wandb
+```
+
+Use a different W&B project to group a new set of runs:
+
+```bash
+uv run python -m slm.train --config configs/lstm.yaml --dataset tinystories --wandb-project slm-tinystories-subset
 ```
 
 ## Generate
 
 ```bash
-uv run python -m slm.generate --checkpoint runs/lstm_shakespeare/best.pt --prompt "To be or not to" --max-new-chars 500
+uv run python -m slm.generate --checkpoint runs/shakespeare/lstm_embedding_dim-256_hidden_dim-256_num_layers-2/best.pt --prompt "To be or not to" --max-new-chars 500
 ```
 
 ## Outputs

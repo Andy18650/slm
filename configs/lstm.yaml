@@ -1,9 +1,5 @@
-name: gru_shakespeare
-data_path: data/processed/shakespeare_char.pt
-output_dir: runs/gru_shakespeare
-
 model:
-  type: gru
+  type: lstm
   embedding_dim: 256
   hidden_dim: 256
   num_layers: 2
@@ -21,9 +17,3 @@ training:
   grad_clip: 1.0
   device: auto
   seed: 42
-
-wandb:
-  enabled: true
-  project: slm-architecture-comparison
-  name: gru_shakespeare
-  mode: online
