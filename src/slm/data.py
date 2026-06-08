@@ -3,38 +3,22 @@ from pathlib import Path
 import torch
 
 
-class CharBatcher:
-    def __init__(
-        self,
-        token_ids: torch.Tensor,
-        batch_size: int,
-        sequence_length: int,
-        device: torch.device,
-    ) -> None:
-        if len(token_ids) <= sequence_length + 1:
-            raise ValueError("Dataset split is too small for the configured sequence_length.")
-        self.token_ids = token_ids.to(torch.long)
-        self.batch_size = batch_size
-        self.sequence_length = sequence_length
-        self.device = device
-
-    def __iter__(self):
-        max_start = len(self.token_ids) - self.sequence_length - 1
-        starts = torch.randint(max_start, (self.batch_size,))
-        x = torch.stack([self.token_ids[start : start + self.sequence_length] for start in starts])
-        y = torch.stack(
-            [self.token_ids[start + 1 : start + self.sequence_length + 1] for start in starts]
-        )
-        yield x.to(self.device), y.to(self.device)
-
-
 def get_batch(
     token_ids: torch.Tensor,
     batch_size: int,
     sequence_length: int,
     device: torch.device,
+    generator: torch.Generator | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    return next(iter(CharBatcher(token_ids, batch_size, sequence_length, device)))
+    if len(token_ids) <= sequence_length + 1:
+        raise ValueError("Dataset split is too small for the configured sequence_length.")
+
+    token_ids = token_ids.to(torch.long)
+    max_start = len(token_ids) - sequence_length - 1
+    starts = torch.randint(max_start, (batch_size,), generator=generator)
+    x = torch.stack([token_ids[start : start + sequence_length] for start in starts])
+    y = torch.stack([token_ids[start + 1 : start + sequence_length + 1] for start in starts])
+    return x.to(device), y.to(device)
 
 
 def load_processed_data(path: str | Path) -> dict:

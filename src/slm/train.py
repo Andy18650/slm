@@ -35,11 +35,13 @@ def evaluate(
     sequence_length: int,
     device: torch.device,
     eval_iters: int,
+    seed: int,
 ) -> float:
     model.eval()
+    generator = torch.Generator().manual_seed(seed)
     losses = []
     for _ in range(eval_iters):
-        x, y = get_batch(token_ids, batch_size, sequence_length, device)
+        x, y = get_batch(token_ids, batch_size, sequence_length, device, generator=generator)
         logits = model(x)
         loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
         losses.append(loss.item())
@@ -140,6 +142,7 @@ def train(config: dict, disable_wandb: bool = False) -> None:
                 training["sequence_length"],
                 device,
                 eval_iters,
+                seed=training.get("seed", 42),
             )
             elapsed = time.perf_counter() - start_time
             row = {
