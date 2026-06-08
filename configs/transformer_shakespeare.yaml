@@ -1,0 +1,30 @@
+name: transformer_shakespeare
+data_path: data/processed/shakespeare_char.pt
+output_dir: runs/transformer_shakespeare
+
+model:
+  type: transformer
+  embedding_dim: 256
+  num_layers: 4
+  num_heads: 4
+  feedforward_dim: 1024
+  dropout: 0.2
+
+training:
+  batch_size: 64
+  sequence_length: 128
+  learning_rate: 0.0005
+  weight_decay: 0.01
+  epochs: 20
+  steps_per_epoch: 500
+  eval_interval: 500
+  eval_iters: 30
+  grad_clip: 1.0
+  device: auto
+  seed: 42
+
+wandb:
+  enabled: true
+  project: slm-architecture-comparison
+  name: transformer_shakespeare
+  mode: online
