@@ -43,7 +43,6 @@ class CustomRNNLanguageModel(nn.Module):
         embedding_dim: int,
         hidden_dim: int,
         num_layers: int,
-        dropout: float = 0.0,
     ) -> None:
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
@@ -51,13 +50,10 @@ class CustomRNNLanguageModel(nn.Module):
             CustomRNNLayer(embedding_dim if layer == 0 else hidden_dim, hidden_dim)
             for layer in range(num_layers)
         )
-        self.dropout = nn.Dropout(dropout)
         self.output = nn.Linear(hidden_dim, vocab_size)
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
         hidden = self.embedding(input_ids)
-        for layer_index, layer in enumerate(self.layers):
+        for layer in self.layers:
             hidden = layer(hidden)
-            if layer_index < len(self.layers) - 1:
-                hidden = self.dropout(hidden)
-        return self.output(self.dropout(hidden))
+        return self.output(hidden)

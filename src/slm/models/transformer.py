@@ -9,7 +9,7 @@ def alibi_slopes(num_heads: int) -> torch.Tensor:
 
 
 class AlibiSelfAttention(nn.Module):
-    def __init__(self, embedding_dim: int, num_heads: int, dropout: float) -> None:
+    def __init__(self, embedding_dim: int, num_heads: int) -> None:
         super().__init__()
         if embedding_dim % num_heads != 0:
             raise ValueError("embedding_dim must be divisible by num_heads.")
@@ -17,7 +17,6 @@ class AlibiSelfAttention(nn.Module):
         self.head_dim = embedding_dim // num_heads
         self.qkv = nn.Linear(embedding_dim, embedding_dim * 3)
         self.output = nn.Linear(embedding_dim, embedding_dim)
-        self.dropout = dropout
         self.register_buffer("slopes", alibi_slopes(num_heads).view(1, num_heads, 1, 1))
 
     def build_alibi_mask(self, sequence_length: int, device: torch.device) -> torch.Tensor:
@@ -41,29 +40,26 @@ class AlibiSelfAttention(nn.Module):
             k,
             v,
             attn_mask=attn_mask,
-            dropout_p=self.dropout if self.training else 0.0,
         )
         attended = attended.transpose(1, 2).contiguous().view(batch_size, sequence_length, embedding_dim)
         return self.output(attended)
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, embedding_dim: int, num_heads: int, feedforward_dim: int, dropout: float) -> None:
+    def __init__(self, embedding_dim: int, num_heads: int, feedforward_dim: int) -> None:
         super().__init__()
         self.attention_norm = nn.LayerNorm(embedding_dim)
-        self.attention = AlibiSelfAttention(embedding_dim, num_heads, dropout)
+        self.attention = AlibiSelfAttention(embedding_dim, num_heads)
         self.feedforward_norm = nn.LayerNorm(embedding_dim)
         self.feedforward = nn.Sequential(
             nn.Linear(embedding_dim, feedforward_dim),
             nn.GELU(),
-            nn.Dropout(dropout),
             nn.Linear(feedforward_dim, embedding_dim),
         )
-        self.dropout = nn.Dropout(dropout)
 
     def forward(self, hidden: torch.Tensor) -> torch.Tensor:
-        hidden = hidden + self.dropout(self.attention(self.attention_norm(hidden)))
-        hidden = hidden + self.dropout(self.feedforward(self.feedforward_norm(hidden)))
+        hidden = hidden + self.attention(self.attention_norm(hidden))
+        hidden = hidden + self.feedforward(self.feedforward_norm(hidden))
         return hidden
 
 
@@ -76,17 +72,15 @@ class TransformerLanguageModel(nn.Module):
         num_heads: int,
         max_sequence_length: int,
         feedforward_dim: int | None = None,
-        dropout: float = 0.0,
     ) -> None:
         super().__init__()
         feedforward_dim = feedforward_dim or embedding_dim * 4
         self.max_sequence_length = max_sequence_length
         self.token_embedding = nn.Embedding(vocab_size, embedding_dim)
         self.blocks = nn.ModuleList(
-            TransformerBlock(embedding_dim, num_heads, feedforward_dim, dropout)
+            TransformerBlock(embedding_dim, num_heads, feedforward_dim)
             for _ in range(num_layers)
         )
-        self.dropout = nn.Dropout(dropout)
         self.output_norm = nn.LayerNorm(embedding_dim)
         self.output = nn.Linear(embedding_dim, vocab_size)
 
@@ -98,7 +92,7 @@ class TransformerLanguageModel(nn.Module):
                 f"{self.max_sequence_length}"
             )
 
-        hidden = self.dropout(self.token_embedding(input_ids))
+        hidden = self.token_embedding(input_ids)
         for block in self.blocks:
             hidden = block(hidden)
         return self.output(self.output_norm(hidden))
