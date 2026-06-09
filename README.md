@@ -66,7 +66,9 @@ uv run python -m slm.train --config configs/gru.yaml --dataset shakespeare --wan
 uv run python -m slm.train --config configs/transformer.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 ```
 
-The config file contains only model and training hyperparameters. Dataset choice, W&B grouping, and output locations are runtime parameters.
+The config file contains only model and training hyperparameters. Dataset choice, W&B grouping, and output locations are runtime parameters. Training duration is controlled by `training.steps`.
+
+W&B run names use `<model type>_<dataset>_<parameter count>`. Training loss is logged every `train_log_interval` steps, while validation loss and perplexity are logged every `eval_interval` steps.
 
 By default, training reads `data/processed/<dataset>_bpe.pt` and writes to `runs/<dataset>/<model-signature>/`.
 
@@ -90,4 +92,4 @@ uv run python -m slm.generate --checkpoint runs/shakespeare/lstm_embedding_dim-2
 
 ## Outputs
 
-Each run writes checkpoints and metrics under `runs/<dataset>/<model-signature>/` unless `--output-dir` is provided.
+Each run writes checkpoints under `runs/<dataset>/<model-signature>/` unless `--output-dir` is provided.

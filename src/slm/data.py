@@ -13,7 +13,7 @@ def get_batch(
     if len(token_ids) <= sequence_length + 1:
         raise ValueError("Dataset split is too small for the configured sequence_length.")
 
-    # Training uses random fixed-length windows rather than sequential dataloader epochs.
+    # Training uses random fixed-length windows rather than sequential passes over the corpus.
     token_ids = token_ids.to(torch.long)
     max_start = len(token_ids) - sequence_length - 1
     starts = torch.randint(max_start, (batch_size,), generator=generator)

@@ -10,8 +10,8 @@ training:
   sequence_length: 128
   learning_rate: 0.001
   weight_decay: 0.01
-  epochs: 20
-  steps_per_epoch: 500
+  steps: 10000
+  train_log_interval: 50
   eval_interval: 500
   eval_iters: 30
   grad_clip: 1.0

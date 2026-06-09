@@ -1,6 +1,4 @@
 import argparse
-import csv
-import time
 from pathlib import Path
 
 import torch
@@ -31,10 +29,9 @@ def build_experiment_config(
 ) -> dict:
     model_config = dict(config["model"])
     signature = model_signature(model_config)
-    run_name = f"{dataset}_{signature}"
     resolved_output_dir = output_dir or str(Path("runs") / dataset / signature)
     return {
-        "name": run_name,
+        "name": f"{model_config['type'].lower()}_{dataset}",
         "dataset": dataset,
         "tokenizer": "bpe",
         "data_path": str(Path(data_dir) / f"{dataset}_bpe.pt"),
@@ -43,7 +40,6 @@ def build_experiment_config(
         "training": dict(config["training"]),
         "wandb": {
             "project": wandb_project,
-            "name": run_name,
             "mode": wandb_mode,
             "group": dataset,
             "tags": [dataset, "bpe", model_config["type"].lower()],
@@ -60,7 +56,7 @@ def maybe_init_wandb(config: dict, enabled: bool):
     wandb_config = config["wandb"]
     return wandb.init(
         project=wandb_config["project"],
-        name=wandb_config["name"],
+        name=config["name"],
         group=wandb_config["group"],
         tags=wandb_config["tags"],
         config=config,
@@ -97,16 +93,6 @@ def evaluate(
     return sum(losses) / len(losses)
 
 
-def write_metric_row(path: Path, row: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    exists = path.exists()
-    with path.open("a", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=list(row.keys()))
-        if not exists:
-            writer.writeheader()
-        writer.writerow(row)
-
-
 def save_checkpoint(
     path: Path,
     model: torch.nn.Module,
@@ -140,6 +126,8 @@ def train(config: dict, disable_wandb: bool = False) -> None:
         model_config.setdefault("max_sequence_length", training["sequence_length"])
 
     model = build_model(model_config, vocab_size=data["vocab_size"]).to(device)
+    param_count = count_parameters(model)
+    config["name"] = f"{model_config['type'].lower()}_{config['dataset']}_{param_count}"
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=training["learning_rate"],
@@ -151,17 +139,15 @@ def train(config: dict, disable_wandb: bool = False) -> None:
     save_json(config, output_dir / "config.json")
 
     run = maybe_init_wandb(config, enabled=not disable_wandb)
-    param_count = count_parameters(model)
     if run is not None:
         run.summary["parameters"] = param_count
         run.summary["device"] = str(device)
 
-    steps_per_epoch = training["steps_per_epoch"]
-    total_steps = training["epochs"] * steps_per_epoch
-    eval_interval = training.get("eval_interval", steps_per_epoch)
+    total_steps = training["steps"]
+    train_log_interval = training.get("train_log_interval", 50)
+    eval_interval = training.get("eval_interval", 500)
     eval_iters = training.get("eval_iters", 20)
     best_val_loss = float("inf")
-    start_time = time.perf_counter()
 
     progress = trange(1, total_steps + 1, desc=config.get("name", "train"))
     for step in progress:
@@ -181,7 +167,13 @@ def train(config: dict, disable_wandb: bool = False) -> None:
             torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
 
-        if step == 1 or step % eval_interval == 0 or step == total_steps:
+        if step % train_log_interval == 0 or step == total_steps:
+            train_row = {"train/loss": loss.item()}
+            progress.set_postfix(train_loss=f"{loss.item():.3f}")
+            if run is not None:
+                run.log(train_row, step=step)
+
+        if step % eval_interval == 0 or step == total_steps:
             val_loss = evaluate(
                 model,
                 data["val"],
@@ -191,21 +183,14 @@ def train(config: dict, disable_wandb: bool = False) -> None:
                 eval_iters,
                 seed=training.get("seed", 42),
             )
-            elapsed = time.perf_counter() - start_time
-            row = {
-                "step": step,
-                "epoch": step / steps_per_epoch,
-                "train_loss": loss.item(),
-                "val_loss": val_loss,
-                "val_perplexity": perplexity(val_loss),
-                "elapsed_seconds": elapsed,
-                "parameters": param_count,
+            val_row = {
+                "val/loss": val_loss,
+                "val/perplexity": perplexity(val_loss),
             }
-            write_metric_row(output_dir / "metrics.csv", row)
             progress.set_postfix(train_loss=f"{loss.item():.3f}", val_loss=f"{val_loss:.3f}")
 
             if run is not None:
-                run.log(row, step=step)
+                run.log(val_row, step=step)
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
