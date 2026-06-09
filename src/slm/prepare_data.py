@@ -4,7 +4,7 @@ from pathlib import Path
 import requests
 import torch
 
-from slm.tokenization import encode_text, tokenizer_vocab_size, train_tokenizer
+from slm.tokenization import encode_text, tokenizer_vocab_size, train_bpe_tokenizer
 
 
 SHAKESPEARE_URL = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
@@ -86,6 +86,8 @@ def collect_hf_split(
 
 def read_huggingface_dataset(dataset: str, max_chars: int | None) -> dict[str, str]:
     spec = HF_DATASETS[dataset]
+    # Keep validation/test small when preparing a subset; this is enough for model comparison
+    # and avoids WSL memory spikes from materializing full Hugging Face splits.
     eval_max_chars = max(1, max_chars // 20) if max_chars is not None else None
     split_limits = {
         "train": max_chars,
@@ -119,28 +121,20 @@ def read_or_download_dataset(dataset: str, raw_dir: Path, max_chars: int | None)
     raise ValueError(f"Unsupported dataset: {dataset}")
 
 
-def prepare_token_data(
+def prepare_bpe_data(
     texts: dict[str, str],
     dataset: str,
-    tokenizer_type: str,
     output_path: Path,
     train_ratio: float,
     val_ratio: float,
     lowercase: bool,
     vocab_size: int,
-    min_frequency: int,
 ) -> None:
     if "all" in texts:
         texts = split_text(texts["all"], train_ratio=train_ratio, val_ratio=val_ratio)
 
-    tokenizer_training_texts = texts if tokenizer_type == "char" else {"train": texts["train"]}
-    tokenizer_meta = train_tokenizer(
-        tokenizer_training_texts,
-        tokenizer_type=tokenizer_type,
-        lowercase=lowercase,
-        vocab_size=vocab_size,
-        min_frequency=min_frequency,
-    )
+    # Train the tokenizer only on training text, then apply the same vocabulary to all splits.
+    tokenizer_meta = train_bpe_tokenizer(texts["train"], lowercase=lowercase, vocab_size=vocab_size)
     encoded = {
         split: torch.tensor(encode_text(text, tokenizer_meta), dtype=torch.long)
         for split, text in texts.items()
@@ -149,11 +143,9 @@ def prepare_token_data(
 
     payload = {
         "dataset": dataset,
-        "level": tokenizer_type,
+        "level": "bpe",
         "tokenizer": tokenizer_meta,
         "vocab_size": actual_vocab_size,
-        "stoi": tokenizer_meta.get("stoi"),
-        "itos": tokenizer_meta.get("itos"),
         "train": encoded["train"],
         "val": encoded["val"],
         "test": encoded.get("test", torch.empty(0, dtype=torch.long)),
@@ -161,7 +153,7 @@ def prepare_token_data(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(payload, output_path)
-    print(f"Saved {dataset} {tokenizer_type} data to {output_path}")
+    print(f"Saved {dataset} BPE data to {output_path}")
     print(
         "Tokens: "
         f"train={len(payload['train']):,}, "
@@ -172,7 +164,7 @@ def prepare_token_data(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Prepare token-level language data.")
+    parser = argparse.ArgumentParser(description="Prepare BPE-tokenized language data.")
     parser.add_argument(
         "--dataset",
         choices=["shakespeare", "tinystories", "wikitext2"],
@@ -180,15 +172,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--raw-dir", default="data/raw")
     parser.add_argument("--output-dir", default="data/processed")
-    parser.add_argument("--tokenizer", choices=["char", "word", "bpe"], default="char")
     parser.add_argument("--lowercase", action="store_true")
     parser.add_argument("--vocab-size", type=int, default=8000, help="Target vocabulary size for BPE.")
-    parser.add_argument(
-        "--min-frequency",
-        type=int,
-        default=2,
-        help="Minimum frequency for word-token vocabulary entries.",
-    )
     parser.add_argument(
         "--max-chars",
         type=int,
@@ -217,17 +202,15 @@ def main() -> None:
         )
 
     texts = read_or_download_dataset(args.dataset, Path(args.raw_dir), args.max_chars)
-    output_path = Path(args.output_dir) / f"{args.dataset}_{args.tokenizer}.pt"
-    prepare_token_data(
+    output_path = Path(args.output_dir) / f"{args.dataset}_bpe.pt"
+    prepare_bpe_data(
         texts,
         args.dataset,
-        args.tokenizer,
         output_path,
         args.train_ratio,
         args.val_ratio,
         args.lowercase,
         args.vocab_size,
-        args.min_frequency,
     )
 
 

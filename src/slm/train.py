@@ -24,7 +24,6 @@ def model_signature(model_config: dict) -> str:
 def build_experiment_config(
     config: dict,
     dataset: str,
-    tokenizer: str,
     data_dir: str,
     output_dir: str | None,
     wandb_project: str,
@@ -32,13 +31,13 @@ def build_experiment_config(
 ) -> dict:
     model_config = dict(config["model"])
     signature = model_signature(model_config)
-    run_name = f"{dataset}_{tokenizer}_{signature}"
-    resolved_output_dir = output_dir or str(Path("runs") / dataset / tokenizer / signature)
+    run_name = f"{dataset}_{signature}"
+    resolved_output_dir = output_dir or str(Path("runs") / dataset / signature)
     return {
         "name": run_name,
         "dataset": dataset,
-        "tokenizer": tokenizer,
-        "data_path": str(Path(data_dir) / f"{dataset}_{tokenizer}.pt"),
+        "tokenizer": "bpe",
+        "data_path": str(Path(data_dir) / f"{dataset}_bpe.pt"),
         "output_dir": resolved_output_dir,
         "model": model_config,
         "training": dict(config["training"]),
@@ -46,8 +45,8 @@ def build_experiment_config(
             "project": wandb_project,
             "name": run_name,
             "mode": wandb_mode,
-            "group": f"{dataset}_{tokenizer}",
-            "tags": [dataset, tokenizer, model_config["type"].lower()],
+            "group": dataset,
+            "tags": [dataset, "bpe", model_config["type"].lower()],
         },
     }
 
@@ -69,19 +68,10 @@ def maybe_init_wandb(config: dict, enabled: bool):
     )
 
 
-def normalize_data_metadata(data: dict) -> dict:
-    if "tokenizer" in data:
-        return data
-    if data.get("level") == "char" and data.get("stoi") is not None and data.get("itos") is not None:
-        data = dict(data)
-        data["tokenizer"] = {
-            "type": "char",
-            "lowercase": False,
-            "stoi": data["stoi"],
-            "itos": data["itos"],
-        }
-        return data
-    raise ValueError("Processed data is missing tokenizer metadata. Re-run slm.prepare_data.")
+def validate_data_metadata(data: dict) -> dict:
+    if data.get("level") != "bpe" or data.get("tokenizer", {}).get("type") != "bpe":
+        raise ValueError("Expected BPE processed data. Re-run slm.prepare_data.")
+    return data
 
 
 @torch.no_grad()
@@ -95,6 +85,7 @@ def evaluate(
     seed: int,
 ) -> float:
     model.eval()
+    # Use a local generator so validation loss is comparable across evaluation points.
     generator = torch.Generator().manual_seed(seed)
     losses = []
     for _ in range(eval_iters):
@@ -130,8 +121,6 @@ def save_checkpoint(
             "model_state": model.state_dict(),
             "config": config,
             "tokenizer": data_meta["tokenizer"],
-            "stoi": data_meta.get("stoi"),
-            "itos": data_meta.get("itos"),
             "vocab_size": data_meta["vocab_size"],
             "step": step,
             "val_loss": val_loss,
@@ -144,7 +133,7 @@ def train(config: dict, disable_wandb: bool = False) -> None:
     training = config["training"]
     set_seed(training.get("seed", 42))
     device = select_device(training.get("device", "auto"))
-    data = normalize_data_metadata(load_processed_data(config["data_path"]))
+    data = validate_data_metadata(load_processed_data(config["data_path"]))
 
     model_config = dict(config["model"])
     if model_config["type"].lower() == "transformer":
@@ -228,7 +217,7 @@ def train(config: dict, disable_wandb: bool = False) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train a token-level language model.")
+    parser = argparse.ArgumentParser(description="Train a BPE-tokenized language model.")
     parser.add_argument("--config", required=True)
     parser.add_argument(
         "--dataset",
@@ -236,12 +225,11 @@ def parse_args() -> argparse.Namespace:
         choices=["shakespeare", "tinystories", "wikitext2"],
         help="Prepared dataset name.",
     )
-    parser.add_argument("--tokenizer", choices=["char", "word", "bpe"], default="char")
     parser.add_argument("--data-dir", default="data/processed")
     parser.add_argument(
         "--output-dir",
         default=None,
-        help="Optional output directory. Defaults to runs/<dataset>/<tokenizer>/<model-signature>.",
+        help="Optional output directory. Defaults to runs/<dataset>/<model-signature>.",
     )
     parser.add_argument("--wandb-project", required=True)
     parser.add_argument("--wandb-mode", default="online", choices=["online", "offline", "disabled"])
@@ -254,7 +242,6 @@ def main() -> None:
     config = build_experiment_config(
         load_yaml(args.config),
         dataset=args.dataset,
-        tokenizer=args.tokenizer,
         data_dir=args.data_dir,
         output_dir=args.output_dir,
         wandb_project=args.wandb_project,

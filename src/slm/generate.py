@@ -35,7 +35,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--prompt", default="To be or not to")
     parser.add_argument("--max-new-tokens", type=int, default=200)
-    parser.add_argument("--max-new-chars", type=int, default=None, help="Deprecated alias for --max-new-tokens.")
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--device", default="auto")
     return parser.parse_args()
@@ -55,22 +54,14 @@ def main() -> None:
     model = build_model(model_config, checkpoint["vocab_size"]).to(device)
     model.load_state_dict(checkpoint["model_state"])
 
-    tokenizer_meta = checkpoint.get("tokenizer")
-    if tokenizer_meta is None:
-        tokenizer_meta = {
-            "type": "char",
-            "lowercase": False,
-            "stoi": checkpoint["stoi"],
-            "itos": checkpoint["itos"],
-        }
+    tokenizer_meta = checkpoint["tokenizer"]
 
     input_ids = encode_text(args.prompt, tokenizer_meta)
-    max_new_tokens = args.max_new_chars if args.max_new_chars is not None else args.max_new_tokens
     text = generate(
         model,
         input_ids,
         tokenizer_meta,
-        max_new_tokens,
+        args.max_new_tokens,
         training["sequence_length"],
         args.temperature,
         device,
