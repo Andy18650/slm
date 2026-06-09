@@ -49,6 +49,8 @@ For laptop-friendly TinyStories experiments, start with a subset:
 uv run python -m slm.prepare_data --dataset tinystories --tokenizer bpe --max-chars 5000000 --vocab-size 8000
 ```
 
+TinyStories and WikiText-2 require `--max-chars` by default because full Hugging Face datasets can require enough memory to destabilize WSL. To intentionally process a full Hugging Face dataset, add `--allow-full-dataset`.
+
 Tokenizer choices:
 
 - `char` preserves the original character-level experiment.

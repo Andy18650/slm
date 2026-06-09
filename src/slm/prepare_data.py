@@ -21,6 +21,7 @@ HF_DATASETS = {
         "text_column": "text",
     },
 }
+DEFAULT_SAFE_MAX_CHARS = 5_000_000
 
 
 def limit_text(text: str, max_chars: int | None) -> str:
@@ -194,6 +195,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional character limit. For Hugging Face datasets this limits the train split; val/test receive smaller limits.",
     )
+    parser.add_argument(
+        "--allow-full-dataset",
+        action="store_true",
+        help="Allow processing a full Hugging Face dataset without --max-chars. This can use a very large amount of memory.",
+    )
     parser.add_argument("--train-ratio", type=float, default=0.9)
     parser.add_argument("--val-ratio", type=float, default=0.05)
     return parser.parse_args()
@@ -203,6 +209,12 @@ def main() -> None:
     args = parse_args()
     if args.train_ratio <= 0 or args.val_ratio <= 0 or args.train_ratio + args.val_ratio >= 1:
         raise ValueError("Expected train_ratio > 0, val_ratio > 0, and train_ratio + val_ratio < 1.")
+    if args.dataset in HF_DATASETS and args.max_chars is None and not args.allow_full_dataset:
+        raise ValueError(
+            f"Preparing the full {args.dataset} Hugging Face dataset can exhaust memory. "
+            f"Pass --max-chars {DEFAULT_SAFE_MAX_CHARS} for a laptop-sized subset, or pass "
+            "--allow-full-dataset if you intentionally want the full corpus."
+        )
 
     texts = read_or_download_dataset(args.dataset, Path(args.raw_dir), args.max_chars)
     output_path = Path(args.output_dir) / f"{args.dataset}_{args.tokenizer}.pt"
