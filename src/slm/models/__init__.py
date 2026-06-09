@@ -1,6 +1,7 @@
+from slm.models.custom_rnn import CustomRNNLanguageModel
 from slm.models.gru import GRULanguageModel
 from slm.models.lstm import LSTMLanguageModel
-from slm.models.rnn import CustomRNNLanguageModel, RNNLanguageModel
+from slm.models.rnn import RNNLanguageModel
 from slm.models.transformer import TransformerLanguageModel
 
 
