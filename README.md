@@ -60,6 +60,7 @@ uv run python -m slm.prepare_data --dataset shakespeare --train-ratio 0.9 --val-
 
 ```bash
 uv run python -m slm.train --config configs/rnn.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
+uv run python -m slm.train --config configs/custom_rnn.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/lstm.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/gru.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/transformer.yaml --dataset shakespeare --wandb-project slm-architecture-comparison

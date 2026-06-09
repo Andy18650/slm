@@ -1,6 +1,6 @@
 from slm.models.gru import GRULanguageModel
 from slm.models.lstm import LSTMLanguageModel
-from slm.models.rnn import RNNLanguageModel
+from slm.models.rnn import CustomRNNLanguageModel, RNNLanguageModel
 from slm.models.transformer import TransformerLanguageModel
 
 
@@ -10,6 +10,8 @@ def build_model(model_config: dict, vocab_size: int):
 
     if model_type == "rnn":
         return RNNLanguageModel(vocab_size=vocab_size, **kwargs)
+    if model_type == "custom_rnn":
+        return CustomRNNLanguageModel(vocab_size=vocab_size, **kwargs)
     if model_type == "lstm":
         return LSTMLanguageModel(vocab_size=vocab_size, **kwargs)
     if model_type == "gru":
@@ -23,6 +25,7 @@ def build_model(model_config: dict, vocab_size: int):
 __all__ = [
     "GRULanguageModel",
     "LSTMLanguageModel",
+    "CustomRNNLanguageModel",
     "RNNLanguageModel",
     "TransformerLanguageModel",
     "build_model",
