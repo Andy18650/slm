@@ -1,6 +1,6 @@
 # Small Language Model Architecture Comparison
 
-This project trains small character-level language models to compare vanilla RNN, LSTM, GRU, and Transformer architectures.
+This project trains small token-level language models to compare vanilla RNN, LSTM, GRU, and Transformer architectures.
 
 The trainer is shared across all models. For recurrent models, each fixed-length batch is a truncated BPTT window. For the Transformer, the same batch is a causal context block. This keeps the optimizer, data pipeline, metrics, logging, and checkpointing identical across architectures.
 
@@ -19,7 +19,14 @@ uv run wandb login
 ## Prepare Data
 
 ```bash
-uv run python -m slm.prepare_data --dataset shakespeare
+uv run python -m slm.prepare_data --dataset shakespeare --tokenizer char
+```
+
+For token-level experiments, prepare BPE or word-token data:
+
+```bash
+uv run python -m slm.prepare_data --dataset shakespeare --tokenizer bpe --vocab-size 8000
+uv run python -m slm.prepare_data --dataset shakespeare --tokenizer word --lowercase
 ```
 
 Supported datasets:
@@ -39,7 +46,19 @@ Local text files always take precedence. Put custom files at `data/raw/<dataset>
 For laptop-friendly TinyStories experiments, start with a subset:
 
 ```bash
-uv run python -m slm.prepare_data --dataset tinystories --max-chars 5000000
+uv run python -m slm.prepare_data --dataset tinystories --tokenizer bpe --max-chars 5000000 --vocab-size 8000
+```
+
+Tokenizer choices:
+
+- `char` preserves the original character-level experiment.
+- `word` splits into words, punctuation, and whitespace tokens.
+- `bpe` trains a byte-level BPE tokenizer on the training split.
+
+Optional lowercasing can reduce vocabulary size:
+
+```bash
+uv run python -m slm.prepare_data --dataset shakespeare --tokenizer word --lowercase
 ```
 
 For local single-file datasets, `--train-ratio` and `--val-ratio` control contiguous train/validation/test splitting:
@@ -51,32 +70,32 @@ uv run python -m slm.prepare_data --dataset shakespeare --train-ratio 0.9 --val-
 ## Train
 
 ```bash
-uv run python -m slm.train --config configs/rnn.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
-uv run python -m slm.train --config configs/lstm.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
-uv run python -m slm.train --config configs/gru.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
-uv run python -m slm.train --config configs/transformer.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
+uv run python -m slm.train --config configs/rnn.yaml --dataset shakespeare --tokenizer bpe --wandb-project slm-architecture-comparison
+uv run python -m slm.train --config configs/lstm.yaml --dataset shakespeare --tokenizer bpe --wandb-project slm-architecture-comparison
+uv run python -m slm.train --config configs/gru.yaml --dataset shakespeare --tokenizer bpe --wandb-project slm-architecture-comparison
+uv run python -m slm.train --config configs/transformer.yaml --dataset shakespeare --tokenizer bpe --wandb-project slm-architecture-comparison
 ```
 
-The config file contains only model and training hyperparameters. Dataset choice, W&B grouping, and output locations are runtime parameters.
+The config file contains only model and training hyperparameters. Dataset choice, tokenizer choice, W&B grouping, and output locations are runtime parameters.
 
-By default, training reads `data/processed/<dataset>_char.pt` and writes to `runs/<dataset>/<model-signature>/`.
+By default, training reads `data/processed/<dataset>_<tokenizer>.pt` and writes to `runs/<dataset>/<tokenizer>/<model-signature>/`.
 
 Disable W&B for a run:
 
 ```bash
-uv run python -m slm.train --config configs/lstm.yaml --dataset shakespeare --wandb-project slm-architecture-comparison --no-wandb
+uv run python -m slm.train --config configs/lstm.yaml --dataset shakespeare --tokenizer bpe --wandb-project slm-architecture-comparison --no-wandb
 ```
 
 Use a different W&B project to group a new set of runs:
 
 ```bash
-uv run python -m slm.train --config configs/lstm.yaml --dataset tinystories --wandb-project slm-tinystories-subset
+uv run python -m slm.train --config configs/lstm.yaml --dataset tinystories --tokenizer bpe --wandb-project slm-tinystories-subset
 ```
 
 ## Generate
 
 ```bash
-uv run python -m slm.generate --checkpoint runs/shakespeare/lstm_embedding_dim-256_hidden_dim-256_num_layers-2/best.pt --prompt "To be or not to" --max-new-chars 500
+uv run python -m slm.generate --checkpoint runs/shakespeare/bpe/lstm_embedding_dim-256_hidden_dim-256_num_layers-2/best.pt --prompt "To be or not to" --max-new-tokens 200
 ```
 
 ## Outputs

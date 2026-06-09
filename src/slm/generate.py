@@ -4,8 +4,8 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 
-from slm.data import decode_tokens, encode_text
 from slm.models import build_model
+from slm.tokenization import decode_tokens, encode_text
 from slm.utils import select_device
 
 
@@ -13,28 +13,29 @@ from slm.utils import select_device
 def generate(
     model: torch.nn.Module,
     input_ids: list[int],
-    itos: dict[int, str],
-    max_new_chars: int,
+    tokenizer_meta: dict,
+    max_new_tokens: int,
     sequence_length: int,
     temperature: float,
     device: torch.device,
 ) -> str:
     model.eval()
     ids = list(input_ids)
-    for _ in range(max_new_chars):
+    for _ in range(max_new_tokens):
         context = torch.tensor([ids[-sequence_length:]], dtype=torch.long, device=device)
         logits = model(context)[:, -1, :] / temperature
         probs = F.softmax(logits, dim=-1)
         next_id = torch.multinomial(probs, num_samples=1).item()
         ids.append(next_id)
-    return decode_tokens(ids, itos)
+    return decode_tokens(ids, tokenizer_meta)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate text from a trained checkpoint.")
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--prompt", default="To be or not to")
-    parser.add_argument("--max-new-chars", type=int, default=500)
+    parser.add_argument("--max-new-tokens", type=int, default=200)
+    parser.add_argument("--max-new-chars", type=int, default=None, help="Deprecated alias for --max-new-tokens.")
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--device", default="auto")
     return parser.parse_args()
@@ -54,18 +55,22 @@ def main() -> None:
     model = build_model(model_config, checkpoint["vocab_size"]).to(device)
     model.load_state_dict(checkpoint["model_state"])
 
-    stoi = checkpoint["stoi"]
-    itos = {int(key): value for key, value in checkpoint["itos"].items()}
-    unknown_chars = sorted(set(args.prompt) - set(stoi))
-    if unknown_chars:
-        raise ValueError(f"Prompt contains characters not in the training vocabulary: {unknown_chars}")
+    tokenizer_meta = checkpoint.get("tokenizer")
+    if tokenizer_meta is None:
+        tokenizer_meta = {
+            "type": "char",
+            "lowercase": False,
+            "stoi": checkpoint["stoi"],
+            "itos": checkpoint["itos"],
+        }
 
-    input_ids = encode_text(args.prompt, stoi)
+    input_ids = encode_text(args.prompt, tokenizer_meta)
+    max_new_tokens = args.max_new_chars if args.max_new_chars is not None else args.max_new_tokens
     text = generate(
         model,
         input_ids,
-        itos,
-        args.max_new_chars,
+        tokenizer_meta,
+        max_new_tokens,
         training["sequence_length"],
         args.temperature,
         device,

@@ -4,6 +4,8 @@ from pathlib import Path
 import requests
 import torch
 
+from slm.tokenization import encode_text, tokenizer_vocab_size, train_tokenizer
+
 
 SHAKESPEARE_URL = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
 HF_DATASETS = {
@@ -116,31 +118,41 @@ def read_or_download_dataset(dataset: str, raw_dir: Path, max_chars: int | None)
     raise ValueError(f"Unsupported dataset: {dataset}")
 
 
-def prepare_character_data(
+def prepare_token_data(
     texts: dict[str, str],
     dataset: str,
+    tokenizer_type: str,
     output_path: Path,
     train_ratio: float,
     val_ratio: float,
+    lowercase: bool,
+    vocab_size: int,
+    min_frequency: int,
 ) -> None:
     if "all" in texts:
         texts = split_text(texts["all"], train_ratio=train_ratio, val_ratio=val_ratio)
 
-    combined_text = "".join(texts.values())
-    chars = sorted(set(combined_text))
-    stoi = {char: index for index, char in enumerate(chars)}
-    itos = {index: char for char, index in stoi.items()}
+    tokenizer_training_texts = texts if tokenizer_type == "char" else {"train": texts["train"]}
+    tokenizer_meta = train_tokenizer(
+        tokenizer_training_texts,
+        tokenizer_type=tokenizer_type,
+        lowercase=lowercase,
+        vocab_size=vocab_size,
+        min_frequency=min_frequency,
+    )
     encoded = {
-        split: torch.tensor([stoi[char] for char in text], dtype=torch.long)
+        split: torch.tensor(encode_text(text, tokenizer_meta), dtype=torch.long)
         for split, text in texts.items()
     }
+    actual_vocab_size = tokenizer_vocab_size(tokenizer_meta)
 
     payload = {
         "dataset": dataset,
-        "level": "char",
-        "vocab_size": len(chars),
-        "stoi": stoi,
-        "itos": itos,
+        "level": tokenizer_type,
+        "tokenizer": tokenizer_meta,
+        "vocab_size": actual_vocab_size,
+        "stoi": tokenizer_meta.get("stoi"),
+        "itos": tokenizer_meta.get("itos"),
         "train": encoded["train"],
         "val": encoded["val"],
         "test": encoded.get("test", torch.empty(0, dtype=torch.long)),
@@ -148,18 +160,18 @@ def prepare_character_data(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(payload, output_path)
-    print(f"Saved {dataset} character data to {output_path}")
+    print(f"Saved {dataset} {tokenizer_type} data to {output_path}")
     print(
-        "Characters: "
+        "Tokens: "
         f"train={len(payload['train']):,}, "
         f"val={len(payload['val']):,}, "
         f"test={len(payload['test']):,}; "
-        f"vocabulary={len(chars)}"
+        f"vocabulary={actual_vocab_size:,}"
     )
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Prepare character-level language data.")
+    parser = argparse.ArgumentParser(description="Prepare token-level language data.")
     parser.add_argument(
         "--dataset",
         choices=["shakespeare", "tinystories", "wikitext2"],
@@ -167,6 +179,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--raw-dir", default="data/raw")
     parser.add_argument("--output-dir", default="data/processed")
+    parser.add_argument("--tokenizer", choices=["char", "word", "bpe"], default="char")
+    parser.add_argument("--lowercase", action="store_true")
+    parser.add_argument("--vocab-size", type=int, default=8000, help="Target vocabulary size for BPE.")
+    parser.add_argument(
+        "--min-frequency",
+        type=int,
+        default=2,
+        help="Minimum frequency for word-token vocabulary entries.",
+    )
     parser.add_argument(
         "--max-chars",
         type=int,
@@ -184,8 +205,18 @@ def main() -> None:
         raise ValueError("Expected train_ratio > 0, val_ratio > 0, and train_ratio + val_ratio < 1.")
 
     texts = read_or_download_dataset(args.dataset, Path(args.raw_dir), args.max_chars)
-    output_path = Path(args.output_dir) / f"{args.dataset}_char.pt"
-    prepare_character_data(texts, args.dataset, output_path, args.train_ratio, args.val_ratio)
+    output_path = Path(args.output_dir) / f"{args.dataset}_{args.tokenizer}.pt"
+    prepare_token_data(
+        texts,
+        args.dataset,
+        args.tokenizer,
+        output_path,
+        args.train_ratio,
+        args.val_ratio,
+        args.lowercase,
+        args.vocab_size,
+        args.min_frequency,
+    )
 
 
 if __name__ == "__main__":

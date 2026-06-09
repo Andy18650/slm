@@ -1,6 +1,5 @@
-from pathlib import Path
-
 import torch
+from pathlib import Path
 
 
 def get_batch(
@@ -23,11 +22,3 @@ def get_batch(
 
 def load_processed_data(path: str | Path) -> dict:
     return torch.load(path, map_location="cpu", weights_only=False)
-
-
-def encode_text(text: str, stoi: dict[str, int]) -> list[int]:
-    return [stoi[char] for char in text]
-
-
-def decode_tokens(token_ids: list[int], itos: dict[int, str]) -> str:
-    return "".join(itos[int(token_id)] for token_id in token_ids)
