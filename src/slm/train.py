@@ -151,6 +151,7 @@ def train(config: dict, disable_wandb: bool = False) -> None:
 
     progress = trange(1, total_steps + 1, desc=config.get("name", "train"))
     for step in progress:
+        log_row = {}
         x, y = get_batch(
             data["train"],
             training["batch_size"],
@@ -168,10 +169,8 @@ def train(config: dict, disable_wandb: bool = False) -> None:
         optimizer.step()
 
         if step % train_log_interval == 0 or step == total_steps:
-            train_row = {"train/loss": loss.item()}
+            log_row["train_loss"] = loss.item()
             progress.set_postfix(train_loss=f"{loss.item():.3f}")
-            if run is not None:
-                run.log(train_row, step=step)
 
         if step % eval_interval == 0 or step == total_steps:
             val_loss = evaluate(
@@ -183,18 +182,16 @@ def train(config: dict, disable_wandb: bool = False) -> None:
                 eval_iters,
                 seed=training.get("seed", 42),
             )
-            val_row = {
-                "val/loss": val_loss,
-                "val/perplexity": perplexity(val_loss),
-            }
+            log_row["val_loss"] = val_loss
+            log_row["val_perplexity"] = perplexity(val_loss)
             progress.set_postfix(train_loss=f"{loss.item():.3f}", val_loss=f"{val_loss:.3f}")
-
-            if run is not None:
-                run.log(val_row, step=step)
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 save_checkpoint(output_dir / "best.pt", model, config, data, step, val_loss)
+
+        if run is not None and log_row:
+            run.log(log_row, step=step)
 
     save_checkpoint(output_dir / "last.pt", model, config, data, total_steps, best_val_loss)
     if run is not None:

@@ -68,7 +68,7 @@ uv run python -m slm.train --config configs/transformer.yaml --dataset shakespea
 
 The config file contains only model and training hyperparameters. Dataset choice, W&B grouping, and output locations are runtime parameters. Training duration is controlled by `training.steps`.
 
-W&B run names use `<model type>_<dataset>_<parameter count>`. Training loss is logged every `train_log_interval` steps, while validation loss and perplexity are logged every `eval_interval` steps.
+W&B run names use `<model type>_<dataset>_<parameter count>`. `train_loss` is logged every `train_log_interval` steps, while `val_loss` and `val_perplexity` are logged every `eval_interval` steps.
 
 By default, training reads `data/processed/<dataset>_bpe.pt` and writes to `runs/<dataset>/<model-signature>/`.
 
