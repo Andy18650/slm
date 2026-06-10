@@ -26,6 +26,7 @@ def build_experiment_config(
     output_dir: str | None,
     wandb_project: str,
     wandb_mode: str,
+    swanlab_mode: str,
 ) -> dict:
     model_config = dict(config["model"])
     signature = model_signature(model_config)
@@ -41,6 +42,7 @@ def build_experiment_config(
         "wandb": {
             "project": wandb_project,
             "mode": wandb_mode,
+            "swanlab_mode": swanlab_mode,
             "group": dataset,
             "tags": [dataset, "bpe", model_config["type"].lower()],
         },
@@ -51,9 +53,16 @@ def maybe_init_wandb(config: dict, enabled: bool):
     if not enabled:
         return None
 
+    wandb_config = config["wandb"]
+    swanlab_mode = wandb_config.get("swanlab_mode", "disabled")
+    if swanlab_mode != "disabled":
+        import swanlab
+
+        # SwanLab monkey-patches W&B logging, so this must happen before wandb.init().
+        swanlab.sync_wandb(mode=swanlab_mode)
+
     import wandb
 
-    wandb_config = config["wandb"]
     return wandb.init(
         project=wandb_config["project"],
         name=config["name"],
@@ -215,6 +224,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--wandb-project", required=True)
     parser.add_argument("--wandb-mode", default="online", choices=["online", "offline", "disabled"])
+    parser.add_argument(
+        "--swanlab-mode",
+        default="disabled",
+        choices=["online", "local", "offline", "disabled"],
+        help="Sync W&B logs to SwanLab. SwanLab sync is disabled by default.",
+    )
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging for this run.")
     return parser.parse_args()
 
@@ -228,6 +243,7 @@ def main() -> None:
         output_dir=args.output_dir,
         wandb_project=args.wandb_project,
         wandb_mode=args.wandb_mode,
+        swanlab_mode=args.swanlab_mode,
     )
     train(config, disable_wandb=args.no_wandb or args.wandb_mode == "disabled")
 

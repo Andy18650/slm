@@ -16,6 +16,12 @@ Optional W&B setup:
 uv run wandb login
 ```
 
+Optional SwanLab setup:
+
+```bash
+uv run swanlab login
+```
+
 ## Prepare Data
 
 ```bash
@@ -82,6 +88,12 @@ Use a different W&B project to group a new set of runs:
 
 ```bash
 uv run python -m slm.train --config configs/lstm.yaml --dataset tinystories --wandb-project slm-tinystories-subset
+```
+
+Sync W&B logs to SwanLab:
+
+```bash
+uv run python -m slm.train --config configs/lstm.yaml --dataset tinystories --wandb-project slm-tinystories-subset --swanlab-mode online
 ```
 
 ## Generate
