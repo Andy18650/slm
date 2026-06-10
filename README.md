@@ -67,6 +67,7 @@ uv run python -m slm.prepare_data --dataset shakespeare --train-ratio 0.9 --val-
 ```bash
 uv run python -m slm.train --config configs/rnn.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/custom_rnn.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
+uv run python -m slm.train --config configs/residual_rnn.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/lstm.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/gru.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/transformer.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
@@ -75,6 +76,8 @@ uv run python -m slm.train --config configs/transformer.yaml --dataset shakespea
 The config file contains only model and training hyperparameters. Dataset choice, W&B grouping, and output locations are runtime parameters. Training duration is controlled by `training.steps`.
 
 W&B run names use `<model type>_<dataset>_<parameter count>`. `train_loss` is logged every `train_log_interval` steps, while `val_loss` and `val_perplexity` are logged every `eval_interval` steps.
+
+Use `--note some-label` to append a short suffix to the run name, and `--compile` to enable `torch.compile`.
 
 By default, training reads `data/processed/<dataset>_bpe.pt` and writes to `runs/<dataset>/<model-signature>/`.
 

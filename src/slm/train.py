@@ -19,6 +19,13 @@ def model_signature(model_config: dict) -> str:
     return "_".join(parts)
 
 
+def format_run_note(note: str | None) -> str:
+    if not note:
+        return ""
+    normalized = "_".join(note.strip().split())
+    return f"_{normalized}" if normalized else ""
+
+
 def build_experiment_config(
     config: dict,
     dataset: str,
@@ -27,6 +34,8 @@ def build_experiment_config(
     wandb_project: str,
     wandb_mode: str,
     swanlab_mode: str,
+    compile_model: bool,
+    note: str | None,
 ) -> dict:
     model_config = dict(config["model"])
     signature = model_signature(model_config)
@@ -39,6 +48,8 @@ def build_experiment_config(
         "output_dir": resolved_output_dir,
         "model": model_config,
         "training": dict(config["training"]),
+        "compile": compile_model,
+        "note": note,
         "wandb": {
             "project": wandb_project,
             "mode": wandb_mode,
@@ -111,9 +122,10 @@ def save_checkpoint(
     val_loss: float,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_model = getattr(model, "_orig_mod", model)
     torch.save(
         {
-            "model_state": model.state_dict(),
+            "model_state": checkpoint_model.state_dict(),
             "config": config,
             "tokenizer": data_meta["tokenizer"],
             "vocab_size": data_meta["vocab_size"],
@@ -136,7 +148,12 @@ def train(config: dict, disable_wandb: bool = False) -> None:
 
     model = build_model(model_config, vocab_size=data["vocab_size"]).to(device)
     param_count = count_parameters(model)
-    config["name"] = f"{model_config['type'].lower()}_{config['dataset']}_{param_count}"
+    config["name"] = (
+        f"{model_config['type'].lower()}_{config['dataset']}_{param_count}"
+        f"{format_run_note(config.get('note'))}"
+    )
+    if config.get("compile", False):
+        model = torch.compile(model)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=training["learning_rate"],
@@ -230,6 +247,8 @@ def parse_args() -> argparse.Namespace:
         choices=["online", "local", "offline", "disabled"],
         help="Sync W&B logs to SwanLab. SwanLab sync is disabled by default.",
     )
+    parser.add_argument("--compile", action="store_true", help="Compile the model with torch.compile.")
+    parser.add_argument("--note", default=None, help="Optional suffix for the run name.")
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging for this run.")
     return parser.parse_args()
 
@@ -244,6 +263,8 @@ def main() -> None:
         wandb_project=args.wandb_project,
         wandb_mode=args.wandb_mode,
         swanlab_mode=args.swanlab_mode,
+        compile_model=args.compile,
+        note=args.note,
     )
     train(config, disable_wandb=args.no_wandb or args.wandb_mode == "disabled")
 
