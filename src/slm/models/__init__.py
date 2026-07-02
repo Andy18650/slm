@@ -3,6 +3,7 @@ from slm.models.gru import GRULanguageModel
 from slm.models.lstm import LSTMLanguageModel
 from slm.models.residual_rnn import ResidualRNNLanguageModel
 from slm.models.rnn import RNNLanguageModel
+from slm.models.split_state_rnn import SplitStateRNNLanguageModel
 from slm.models.transformer import TransformerLanguageModel
 
 
@@ -16,6 +17,8 @@ def build_model(model_config: dict, vocab_size: int):
         return CustomRNNLanguageModel(vocab_size=vocab_size, **kwargs)
     if model_type == "residual_rnn":
         return ResidualRNNLanguageModel(vocab_size=vocab_size, **kwargs)
+    if model_type == "split_state_rnn":
+        return SplitStateRNNLanguageModel(vocab_size=vocab_size, **kwargs)
     if model_type == "lstm":
         return LSTMLanguageModel(vocab_size=vocab_size, **kwargs)
     if model_type == "gru":
@@ -32,6 +35,7 @@ __all__ = [
     "CustomRNNLanguageModel",
     "ResidualRNNLanguageModel",
     "RNNLanguageModel",
+    "SplitStateRNNLanguageModel",
     "TransformerLanguageModel",
     "build_model",
 ]
