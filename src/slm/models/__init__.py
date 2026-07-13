@@ -1,3 +1,4 @@
+from slm.models.attention_rnn import AttentionRNNLanguageModel
 from slm.models.custom_rnn import CustomRNNLanguageModel
 from slm.models.gru import GRULanguageModel
 from slm.models.lstm import LSTMLanguageModel
@@ -19,6 +20,8 @@ def build_model(model_config: dict, vocab_size: int):
         return ResidualRNNLanguageModel(vocab_size=vocab_size, **kwargs)
     if model_type == "split_state_rnn":
         return SplitStateRNNLanguageModel(vocab_size=vocab_size, **kwargs)
+    if model_type == "attention_rnn":
+        return AttentionRNNLanguageModel(vocab_size=vocab_size, **kwargs)
     if model_type == "lstm":
         return LSTMLanguageModel(vocab_size=vocab_size, **kwargs)
     if model_type == "gru":
@@ -30,6 +33,7 @@ def build_model(model_config: dict, vocab_size: int):
 
 
 __all__ = [
+    "AttentionRNNLanguageModel",
     "GRULanguageModel",
     "LSTMLanguageModel",
     "CustomRNNLanguageModel",

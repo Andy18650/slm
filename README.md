@@ -69,6 +69,7 @@ uv run python -m slm.train --config configs/rnn.yaml --dataset shakespeare --wan
 uv run python -m slm.train --config configs/custom_rnn.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/residual_rnn.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/split_state_rnn.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
+uv run python -m slm.train --config configs/attention_rnn.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/lstm.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/gru.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
 uv run python -m slm.train --config configs/transformer.yaml --dataset shakespeare --wandb-project slm-architecture-comparison
